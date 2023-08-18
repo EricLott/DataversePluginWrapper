@@ -1,0 +1,25 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.33516.290
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DataversePluginWrapper", "DataversePluginWrapper.csproj", "{AFF27A2D-562D-4C6C-A163-42EB1FB7849E}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{AFF27A2D-562D-4C6C-A163-42EB1FB7849E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AFF27A2D-562D-4C6C-A163-42EB1FB7849E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AFF27A2D-562D-4C6C-A163-42EB1FB7849E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AFF27A2D-562D-4C6C-A163-42EB1FB7849E}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {4B23321A-C2D4-4E13-9B7C-0349EF396879}
+	EndGlobalSection
+EndGlobal
