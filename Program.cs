@@ -15,7 +15,7 @@ namespace DataverseWrapper
 
         static void Main(string[] args)
         {
-            string zipPath = "C:\\Users\\EricL\\Downloads\\CRMBase_1_1_0_8.zip"; // Provide the path to your zip file here
+            string zipPath = ""; // Provide the path to your zip file here
             ReadCustomizationsXml(zipPath);
         }
 
@@ -159,8 +159,9 @@ namespace DataverseWrapper
             optionValueSetsClass.Append(ProcessStateOptionSets(doc));
             ProcessStatusOptionSets(doc);
             optionValueSetsClass.AppendLine("}");
-
-            string outputPath = Path.Combine("C:\\Users\\EricL\\OneDrive\\Documents", "GeneratedClasses");
+            
+            //Add output folder
+            string outputPath = Path.Combine("", "GeneratedClasses");
             Directory.CreateDirectory(outputPath); // Ensure the directory exists
             File.WriteAllText(Path.Combine(outputPath, "OptionValueSets.cs"), optionValueSetsClass.ToString());
         }
@@ -231,7 +232,8 @@ namespace DataverseWrapper
                 }
 
                 // Write class to file or use as needed
-                string outputPath = Path.Combine("C:\\Users\\EricL\\OneDrive\\Documents", "GeneratedClasses");
+                //add output folder
+                string outputPath = Path.Combine("", "GeneratedClasses");
                 Directory.CreateDirectory(outputPath); // Ensure the directory exists
                 File.WriteAllText(Path.Combine(outputPath, $"{entityName}.cs"), classDefinition);
 
