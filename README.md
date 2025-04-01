@@ -1,4 +1,3 @@
-```markdown
 # DataverseWrapper
 
 A simple console application to extract and process a `customizations.xml` file from a Dynamics 365 / Dataverse unmanaged solution. It generates C# classes—including enums and CRUD operations—for your custom tables based on all metadata included in the solution.
