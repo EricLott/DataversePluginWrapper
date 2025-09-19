@@ -1,68 +1,119 @@
-# DataverseWrapper
+# Dataverse Wrapper Generator
 
-A simple console application to extract and process a `customizations.xml` file from a Dynamics 365 / Dataverse unmanaged solution. It generates C# classes—including enums and CRUD operations—for your custom tables based on all metadata included in the solution.
+A C# console application that generates strongly-typed entity classes and option set enums from a Dataverse solution zip (`customizations.xml`).
+This tool helps developers working with Microsoft Dataverse (Dynamics 365) by creating easy-to-use wrapper classes instead of manually handling attributes and option sets.
 
-## Features
+## ✨ Features
 
-- **Extraction:** Reads a zip file to locate `customizations.xml`.
-- **Enum Generation:** Processes optionsets (including state and status) into enums.
-- **Class Generation:** Creates C# classes for custom tables with mapped properties and CRUD methods.
-- **Metadata Coverage:** Ensure your unmanaged solution contains all metadata for your custom tables.
+* Parses `customizations.xml` inside a Dataverse solution zip.
+* Generates:
 
-## Requirements
+  * **Option Sets** → strongly-typed enums in `OptionValueSets.cs`.
+  * **State & StatusReason enums** (e.g., `ActiveStatusReason`, `InactiveStatusReason`).
+  * **Entity classes** with CRUD wrappers (`Create`, `Retrieve`, `Update`, `Delete`).
+* Smart sanitization for C# identifiers.
+* Interactive overwrite prompts (with `--yes` to skip).
+* Colored console output for better visibility.
+* Entity filtering via `--filter`.
 
-- [.NET 5.0+](https://dotnet.microsoft.com/download) or a compatible .NET Framework version
-- A valid unmanaged solution (downloaded from your Dynamics 365/Dataverse environment) that includes custom tables with full metadata
-- Visual Studio or your preferred C# IDE
+## ⚡ Getting Started
 
-## Getting Started
+### 1. Clone & Build
 
-1. **Download the Unmanaged Solution:**
+```sh
+git clone https://github.com/yourusername/DataverseWrapperGenerator.git
+cd DataverseWrapperGenerator
+dotnet build
+```
 
-   Make sure you export an unmanaged solution from your Dynamics 365/Dataverse environment. This solution should include all the custom tables you want to generate classes for, with complete metadata.
+### 2. Run
 
-2. **Clone the Repository:**
+```sh
+dotnet run -- -z path/to/your/solution.zip -o ./Generated
+```
 
-   ```bash
-   git clone https://github.com/yourusername/DataverseWrapper.git
-   cd DataverseWrapper
-   ```
+## 📖 Usage
 
-3. **Build the Project:**
+```
+DataverseWrapper -z <path_to_solution_zip> [options]
 
-   Open the solution in Visual Studio and build it, or run:
+Options:
+  -z, --zip <path>         Path to Dataverse solution zip (required)
+  -o, --out <dir>          Output directory (default: ./GeneratedClasses_{timestamp})
+  -f, --filter <text>      Only generate for entities whose display name contains text
+  -v, --verbose            Verbose logging
+  -y, --yes                Overwrite existing files without prompt
+  -h, --help               Show help
+```
 
-   ```bash
-   dotnet build
-   ```
+### Example: Generate all
 
-4. **Configure the Zip File Path:**
+```sh
+dotnet run -- -z ./MySolution.zip
+```
 
-   In `Program.cs`, update the `zipPath` variable with the path to your zip file containing the unmanaged solution:
+### Example: Only generate for entities containing "Contact"
 
-   ```csharp
-   string zipPath = "path/to/your/customizations.zip";
-   ```
+```sh
+dotnet run -- -z ./MySolution.zip -f Contact
+```
 
-5. **Run the Application:**
+### Example: Overwrite without prompts
 
-   Execute the project via Visual Studio or the command line:
+```sh
+dotnet run -- -z ./MySolution.zip -o ./OutDir -y
+```
 
-   ```bash
-   dotnet run
-   ```
+## 📂 Output Structure
 
-   The application will process the zip file and generate:
-   - `OptionValueSets.cs`
-   - A separate C# class file for each custom table in the `GeneratedClasses` folder
+```
+GeneratedClasses_20250919/
+ ├── OptionSets/
+ │   └── OptionValueSets.cs
+ └── Entities/
+     ├── Account.cs
+     ├── Contact.cs
+     └── ...
+```
 
-## Usage
+## ✅ Example Generated Code
 
-- **Solution Export:** Ensure your unmanaged solution export includes all the required metadata for the custom tables.
-- **Processing:** The app scans the provided zip file for `customizations.xml`, then reads and processes optionsets and entity definitions.
-- **Generation:** C# classes with proper mappings and CRUD methods are output into the `GeneratedClasses` folder.
+### Option Set Enum
 
-## Contributing
+```csharp
+public static class OptionValueSets
+{
+    public enum ContactType
+    {
+        Customer = 1,
+        Vendor = 2,
+        Partner = 3,
+    }
+}
+```
 
-Contributions are welcome!  
-Feel free to open issues or submit pull requests for improvements or bug fixes.
+### Entity Wrapper
+
+```csharp
+public class ContactItem
+{
+    private IOrganizationService _service;
+    private string EntityLogicalName = "contact";
+
+    [LogicalName("firstname")]
+    public string FirstName { get; set; }
+
+    [LogicalName("lastname")]
+    public string LastName { get; set; }
+
+    public ContactItem(IOrganizationService service)
+    {
+        _service = service;
+    }
+
+    public void Create() { ... }
+    public void Retrieve(Guid id) { ... }
+    public void Update() { ... }
+    public void Delete() { ... }
+}
+```
