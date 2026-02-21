@@ -30,6 +30,7 @@ dotnet run -- -z path/to/your/solution.zip -o ./Generated
 
 ```text
 DataverseWrapper -z <path_to_solution_zip> [options]
+DataverseWrapper                         (interactive mode)
 
 Options:
   -z, --zip <path>         Path to Dataverse solution zip (required)
@@ -39,6 +40,8 @@ Options:
   -y, --yes                Overwrite existing files without prompt
   -h, --help               Show help
 ```
+
+If you run the executable with no arguments, it starts a guided interactive flow and prompts for zip path, output folder, optional filter, and overwrite behavior.
 
 ### Examples
 

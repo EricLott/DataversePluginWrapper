@@ -39,17 +39,28 @@ namespace DataverseWrapper
             PrintBanner();
 
             // Basic CLI parsing with friendly defaults
-            if (args.Length == 0 || args.Contains("-h") || args.Contains("--help"))
+            if (args.Contains("-h") || args.Contains("--help"))
             {
                 PrintHelp();
                 return 0;
             }
 
-            string zipPath = GetArg(args, "-z", "--zip");
-            string outDir = GetArg(args, "-o", "--out");
-            _verbose = args.Contains("-v") || args.Contains("--verbose");
-            _overwrite = args.Contains("-y") || args.Contains("--yes");
-            _filterContains = GetArg(args, "-f", "--filter"); // case-insensitive contains on entity display name
+            string zipPath;
+            string outDir;
+            if (args.Length == 0)
+            {
+                Console.WriteLine("No arguments provided. Starting interactive mode.");
+                WriteHr();
+                (zipPath, outDir, _verbose, _overwrite, _filterContains) = RunInteractiveSetup();
+            }
+            else
+            {
+                zipPath = GetArg(args, "-z", "--zip");
+                outDir = GetArg(args, "-o", "--out");
+                _verbose = args.Contains("-v") || args.Contains("--verbose");
+                _overwrite = args.Contains("-y") || args.Contains("--yes");
+                _filterContains = GetArg(args, "-f", "--filter"); // case-insensitive contains on entity display name
+            }
 
             if (string.IsNullOrWhiteSpace(zipPath))
             {
@@ -688,6 +699,7 @@ namespace DataverseWrapper
             WriteHr();
             Console.WriteLine("Usage:");
             Console.WriteLine("  DataverseWrapper -z <path_to_solution_zip> [options]");
+            Console.WriteLine("  DataverseWrapper  (no args starts interactive mode)");
             Console.WriteLine();
             Console.WriteLine("Options:");
             Console.WriteLine("  -z, --zip <path>         Path to Dataverse solution zip containing customizations.xml (required)");
@@ -780,6 +792,61 @@ namespace DataverseWrapper
                 }
             }
             return null;
+        }
+
+        private static (string zipPath, string outDir, bool verbose, bool overwrite, string filterContains) RunInteractiveSetup()
+        {
+            string zipPath;
+            while (true)
+            {
+                Console.Write("Path to Dataverse solution zip: ");
+                zipPath = (Console.ReadLine() ?? string.Empty).Trim('"', ' ', '\t');
+                if (File.Exists(zipPath)) break;
+                LogWarn($"Zip not found: {zipPath}");
+            }
+
+            string defaultOutDir = Path.Combine(Environment.CurrentDirectory, $"GeneratedClasses_{DateTime.Now:yyyyMMdd_HHmmss}");
+            Console.Write($"Output directory [{defaultOutDir}]: ");
+            string outDirInput = Console.ReadLine();
+            string outDir = string.IsNullOrWhiteSpace(outDirInput) ? defaultOutDir : outDirInput.Trim('"', ' ', '\t');
+
+            Console.Write("Entity name filter (leave blank for all): ");
+            string filter = Console.ReadLine();
+
+            bool verbose = PromptYesNo("Enable verbose logging?", defaultValue: false);
+            bool overwrite = PromptYesNo("Overwrite existing files without prompt?", defaultValue: false);
+
+            WriteHr();
+            Console.WriteLine("Configuration:");
+            Console.WriteLine($"Zip:        {zipPath}");
+            Console.WriteLine($"Output:     {outDir}");
+            Console.WriteLine($"Filter:     {(string.IsNullOrWhiteSpace(filter) ? "(none)" : filter)}");
+            Console.WriteLine($"Verbose:    {verbose}");
+            Console.WriteLine($"Overwrite:  {overwrite}");
+            WriteHr();
+
+            bool proceed = PromptYesNo("Start generation now?", defaultValue: true);
+            if (!proceed)
+            {
+                LogWarn("Canceled by user.");
+                Environment.Exit(130);
+            }
+
+            return (zipPath, outDir, verbose, overwrite, string.IsNullOrWhiteSpace(filter) ? null : filter);
+        }
+
+        private static bool PromptYesNo(string prompt, bool defaultValue)
+        {
+            while (true)
+            {
+                string suffix = defaultValue ? "[Y/n]" : "[y/N]";
+                Console.Write($"{prompt} {suffix}: ");
+                string input = (Console.ReadLine() ?? string.Empty).Trim();
+                if (string.IsNullOrEmpty(input)) return defaultValue;
+                if (input.Equals("y", StringComparison.OrdinalIgnoreCase) || input.Equals("yes", StringComparison.OrdinalIgnoreCase)) return true;
+                if (input.Equals("n", StringComparison.OrdinalIgnoreCase) || input.Equals("no", StringComparison.OrdinalIgnoreCase)) return false;
+                LogWarn("Please enter y or n.");
+            }
         }
 
         private static string MakeUniqueIdentifier(string candidate, HashSet<string> used)
