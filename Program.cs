@@ -13,9 +13,18 @@ namespace DataverseWrapper
     {
         // Maps and counters
         private static readonly Dictionary<string, string> LogicalNameToEnumMap = new Dictionary<string, string>();
-        private static readonly Dictionary<string, string> LocalizedNameToLogicalNameMap = new Dictionary<string, string>();
         private static readonly Dictionary<string, string> StateMap = new Dictionary<string, string>();
         private static readonly Dictionary<string, string> StatusReasonMap = new Dictionary<string, string>();
+        private static readonly HashSet<string> CSharpKeywords = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "abstract","as","base","bool","break","byte","case","catch","char","checked","class","const","continue",
+            "decimal","default","delegate","do","double","else","enum","event","explicit","extern","false","finally",
+            "fixed","float","for","foreach","goto","if","implicit","in","int","interface","internal","is","lock",
+            "long","namespace","new","null","object","operator","out","override","params","private","protected",
+            "public","readonly","ref","return","sbyte","sealed","short","sizeof","stackalloc","static","string",
+            "struct","switch","this","throw","true","try","typeof","uint","ulong","unchecked","unsafe","ushort",
+            "using","virtual","void","volatile","while"
+        };
 
         private static int _entitiesGenerated = 0;
         private static int _enumsGenerated = 0;
@@ -30,17 +39,28 @@ namespace DataverseWrapper
             PrintBanner();
 
             // Basic CLI parsing with friendly defaults
-            if (args.Length == 0 || args.Contains("-h") || args.Contains("--help"))
+            if (args.Contains("-h") || args.Contains("--help"))
             {
                 PrintHelp();
                 return 0;
             }
 
-            string zipPath = GetArg(args, "-z", "--zip");
-            string outDir = GetArg(args, "-o", "--out");
-            _verbose = args.Contains("-v") || args.Contains("--verbose");
-            _overwrite = args.Contains("-y") || args.Contains("--yes");
-            _filterContains = GetArg(args, "-f", "--filter"); // case-insensitive contains on entity display name
+            string zipPath;
+            string outDir;
+            if (args.Length == 0)
+            {
+                Console.WriteLine("No arguments provided. Starting interactive mode.");
+                WriteHr();
+                (zipPath, outDir, _verbose, _overwrite, _filterContains) = RunInteractiveSetup();
+            }
+            else
+            {
+                zipPath = GetArg(args, "-z", "--zip");
+                outDir = GetArg(args, "-o", "--out");
+                _verbose = args.Contains("-v") || args.Contains("--verbose");
+                _overwrite = args.Contains("-y") || args.Contains("--yes");
+                _filterContains = GetArg(args, "-f", "--filter"); // case-insensitive contains on entity display name
+            }
 
             if (string.IsNullOrWhiteSpace(zipPath))
             {
@@ -134,6 +154,7 @@ namespace DataverseWrapper
         private static string ProcessStateOptionSets(XmlDocument doc)
         {
             var statusEnumsClass = new StringBuilder();
+            var usedMembers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             // State enum (Active/Inactive)
             XmlNode statusAttribute = doc.SelectSingleNode("//attribute[@PhysicalName='statecode']/optionset");
@@ -148,7 +169,8 @@ namespace DataverseWrapper
                 {
                     string value = state.Attributes["value"].Value;
                     string label = state.Attributes["invariantname"].Value;
-                    statusEnumsClass.AppendLine($"    {SanitizeString(label)} = {value},");
+                    string memberName = MakeUniqueIdentifier(SanitizeString(label), usedMembers);
+                    statusEnumsClass.AppendLine($"    {memberName} = {value},");
                     // Add or update state value text
                     StateMap[value] = label;
                 }
@@ -172,6 +194,7 @@ namespace DataverseWrapper
                 if (string.IsNullOrWhiteSpace(entityName)) continue;
 
                 var statusEnumsClass = new StringBuilder();
+                var usedEnumNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 XmlNodeList statusAttributes = entityNode.SelectNodes(".//attribute[@PhysicalName='statuscode']/optionset");
                 foreach (XmlNode statusAttribute in statusAttributes.Cast<XmlNode>())
                 {
@@ -188,13 +211,16 @@ namespace DataverseWrapper
                             stateName = "Unknown";
                         }
 
-                        statusEnumsClass.AppendLine($"    public enum {SanitizeString(stateName)}StatusReason");
+                        string enumName = MakeUniqueIdentifier($"{SanitizeString(stateName)}StatusReason", usedEnumNames);
+                        statusEnumsClass.AppendLine($"    public enum {enumName}");
                         statusEnumsClass.AppendLine("    {");
+                        var usedMembers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                         foreach (var status in group)
                         {
                             string value = status.Attributes["value"].Value;
                             string label = status.SelectSingleNode("labels/label")?.Attributes?["description"]?.Value ?? $"Value_{value}";
-                            statusEnumsClass.AppendLine($"        {SanitizeString(label)} = {value},");
+                            string memberName = MakeUniqueIdentifier(SanitizeString(label), usedMembers);
+                            statusEnumsClass.AppendLine($"        {memberName} = {value},");
                         }
                         statusEnumsClass.AppendLine("    }");
                         _enumsGenerated++;
@@ -261,19 +287,22 @@ namespace DataverseWrapper
 
             var text = sanitized.ToString();
             if (string.IsNullOrWhiteSpace(text)) return "Unnamed";
+            if (CSharpKeywords.Contains(text)) return $"_{text}";
             return text;
         }
 
         private static string GenerateEnumDefinition(XmlNode optionSet, string enumName)
         {
             var enumDefinition = new StringBuilder($"    public enum {enumName}\n    {{\n");
+            var usedMembers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             XmlNodeList options = optionSet.SelectNodes("options/option");
             foreach (XmlNode option in options.Cast<XmlNode>())
             {
                 string label = option.SelectSingleNode("labels/label")?.Attributes?["description"]?.Value ?? "Unnamed";
                 string value = option.Attributes?["value"]?.Value ?? "0";
-                enumDefinition.AppendLine($"        {SanitizeString(label)} = {value},");
+                string memberName = MakeUniqueIdentifier(SanitizeString(label), usedMembers);
+                enumDefinition.AppendLine($"        {memberName} = {value},");
             }
 
             enumDefinition.AppendLine("    }");
@@ -346,6 +375,7 @@ namespace DataverseWrapper
             AppendInitializationMethods(classDefinition, entityName, classpostfix);
             AppendCustomAttribute(classDefinition);
             AppendMappingMethod(classDefinition);
+            AppendValueConversionMethods(classDefinition);
             AppendRetrieveMethod(classDefinition, entityLogicalName, primaryKeyColumn);
             AppendCreateMethod(classDefinition, primaryKeyColumn);
             AppendUpdateMethod(classDefinition, primaryKeyColumn);
@@ -387,17 +417,19 @@ namespace DataverseWrapper
         private static string ProcessAttributes(StringBuilder classDefinition, XmlNode entityNode)
         {
             string primaryKeyColumn = "Id";
+            var usedPropertyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
             XmlNodeList attributes = entityNode.SelectNodes("EntityInfo/entity/attributes/attribute");
             foreach (XmlNode attribute in attributes.Cast<XmlNode>())
             {
                 string logicalName = attribute.SelectSingleNode("LogicalName")?.InnerText;
                 string displayName = SanitizeString(attribute.SelectSingleNode("displaynames/displayname[@languagecode='1033']")?.Attributes?["description"]?.Value);
-                LocalizedNameToLogicalNameMap[displayName ?? logicalName ?? Guid.NewGuid().ToString()] = logicalName;
-
+                string rawType = attribute.SelectSingleNode("Type")?.InnerText?.ToLowerInvariant() ?? string.Empty;
                 string propertyType = ConvertAttributeTypeToCSharpType(attribute);
+                bool isStateCode = string.Equals(logicalName, "statecode", StringComparison.OrdinalIgnoreCase) || rawType == "state";
+                bool isStatusCode = string.Equals(logicalName, "statuscode", StringComparison.OrdinalIgnoreCase) || rawType == "status";
 
-                if (displayName == "Status")
+                if (isStateCode)
                 {
                     displayName = "State";
                     propertyType = "StateCode";
@@ -405,21 +437,22 @@ namespace DataverseWrapper
 
                 if (!string.IsNullOrWhiteSpace(displayName) && !string.IsNullOrWhiteSpace(propertyType))
                 {
-                    if (displayName == "StatusReason")
+                    string propertyName = MakeUniqueIdentifier(displayName, usedPropertyNames);
+                    if (isStatusCode)
                     {
-                        ProcessStatusReasonAttribute(classDefinition, logicalName, propertyType);
+                        ProcessStatusReasonAttribute(classDefinition, logicalName, rawType);
                     }
                     else
                     {
                         if (propertyType == "primarykey")
                         {
-                            displayName = "Id";
-                            primaryKeyColumn = displayName;
+                            propertyName = MakeUniqueIdentifier("Id", usedPropertyNames);
+                            primaryKeyColumn = propertyName;
                             propertyType = "Guid";
                         }
 
-                        classDefinition.AppendLine($"    [LogicalName(\"{logicalName}\")]");
-                        classDefinition.AppendLine($"    public {propertyType} {displayName} {{ get; set; }}");
+                        classDefinition.AppendLine($"    [LogicalName(\"{logicalName}\", \"{rawType}\")]");
+                        classDefinition.AppendLine($"    public {propertyType} {propertyName} {{ get; set; }}");
                         classDefinition.AppendLine();
                     }
                 }
@@ -428,25 +461,29 @@ namespace DataverseWrapper
             return primaryKeyColumn;
         }
 
-        private static void ProcessStatusReasonAttribute(StringBuilder classDefinition, string logicalName, string propertyType)
+        private static void ProcessStatusReasonAttribute(StringBuilder classDefinition, string logicalName, string rawType)
         {
             // Backing int? + smart enum proxy
-            propertyType = "int?";
-            classDefinition.AppendLine($"    public {propertyType} StatusReason {{ get; set; }}");
+            classDefinition.AppendLine($"    [LogicalName(\"{logicalName}\", \"{rawType}\")]");
+            classDefinition.AppendLine("    public int? StatusReason { get; set; }");
             classDefinition.AppendLine();
-            classDefinition.AppendLine($"    [LogicalName(\"{logicalName}\")]");
             classDefinition.AppendLine("    public object StatusReasonEnum");
             classDefinition.AppendLine("    {");
             classDefinition.AppendLine("        get");
             classDefinition.AppendLine("        {");
-            classDefinition.AppendLine("            if (State == StateCode.Active && StatusReason.HasValue) return (ActiveStatusReason)StatusReason.Value;");
-            classDefinition.AppendLine("            if (State == StateCode.Inactive && StatusReason.HasValue) return (InactiveStatusReason)StatusReason.Value;");
-            classDefinition.AppendLine("            return null;");
+            classDefinition.AppendLine("            if (!StatusReason.HasValue) return null;");
+            classDefinition.AppendLine("            var stateProperty = GetType().GetProperty(\"State\");");
+            classDefinition.AppendLine("            var stateValue = stateProperty?.GetValue(this);");
+            classDefinition.AppendLine("            if (stateValue == null) return StatusReason.Value;");
+            classDefinition.AppendLine("            var enumType = GetType().GetNestedType($\"{stateValue}StatusReason\", BindingFlags.Public);");
+            classDefinition.AppendLine("            if (enumType == null) return StatusReason.Value;");
+            classDefinition.AppendLine("            return Enum.ToObject(enumType, StatusReason.Value);");
             classDefinition.AppendLine("        }");
             classDefinition.AppendLine("        set");
             classDefinition.AppendLine("        {");
-            classDefinition.AppendLine("            if (State == StateCode.Active && value is ActiveStatusReason a) StatusReason = (int)a;");
-            classDefinition.AppendLine("            else if (State == StateCode.Inactive && value is InactiveStatusReason i) StatusReason = (int)i;");
+            classDefinition.AppendLine("            if (value == null) { StatusReason = null; return; }");
+            classDefinition.AppendLine("            if (value is int i) { StatusReason = i; return; }");
+            classDefinition.AppendLine("            if (value.GetType().IsEnum) { StatusReason = (int)value; }");
             classDefinition.AppendLine("        }");
             classDefinition.AppendLine("    }");
             classDefinition.AppendLine();
@@ -467,7 +504,14 @@ namespace DataverseWrapper
             classDefinition.AppendLine("    public class LogicalNameAttribute : Attribute");
             classDefinition.AppendLine("    {");
             classDefinition.AppendLine("        public string Name { get; }");
-            classDefinition.AppendLine("        public LogicalNameAttribute(string name) { Name = name; }");
+            classDefinition.AppendLine("        public string AttributeType { get; }");
+            classDefinition.AppendLine("        public string TargetEntity { get; }");
+            classDefinition.AppendLine("        public LogicalNameAttribute(string name, string attributeType = null, string targetEntity = null)");
+            classDefinition.AppendLine("        {");
+            classDefinition.AppendLine("            Name = name;");
+            classDefinition.AppendLine("            AttributeType = attributeType;");
+            classDefinition.AppendLine("            TargetEntity = targetEntity;");
+            classDefinition.AppendLine("        }");
             classDefinition.AppendLine("    }");
             classDefinition.AppendLine();
         }
@@ -480,28 +524,66 @@ namespace DataverseWrapper
             classDefinition.AppendLine("        PropertyInfo[] properties = GetType().GetProperties();");
             classDefinition.AppendLine("        foreach (var property in properties)");
             classDefinition.AppendLine("        {");
-            classDefinition.AppendLine("            var value = property.GetValue(this);");
-            classDefinition.AppendLine("            if (value == null) continue;");
-            classDefinition.AppendLine("            if (value is Guid g && g == Guid.Empty) continue;");
-            classDefinition.AppendLine("            if (value is DateTime dt && dt == DateTime.MinValue) continue;");
-            classDefinition.AppendLine("            if (value.GetType().IsEnum) value = new OptionSetValue((int)value);");
             classDefinition.AppendLine("            var logical = property.GetCustomAttribute<LogicalNameAttribute>();");
             classDefinition.AppendLine("            if (logical == null) continue;");
+            classDefinition.AppendLine("            var value = property.GetValue(this);");
+            classDefinition.AppendLine("            if (value == null) continue;");
             classDefinition.AppendLine("            if (property.PropertyType == typeof(Party[]))");
             classDefinition.AppendLine("            {");
-            classDefinition.AppendLine("                var parties = (Party[])value;");
-            classDefinition.AppendLine("                EntityCollection partyList = new EntityCollection();");
+                classDefinition.AppendLine("                var parties = (Party[])value;");
+                classDefinition.AppendLine("                EntityCollection partyList = new EntityCollection();");
             classDefinition.AppendLine("                foreach (var party in parties)");
             classDefinition.AppendLine("                {");
             classDefinition.AppendLine("                    Entity p = new Entity(\"activityparty\");");
             classDefinition.AppendLine("                    p[\"partyid\"] = new EntityReference(party.EntityType, party.Id);");
             classDefinition.AppendLine("                    partyList.Entities.Add(p);");
-            classDefinition.AppendLine("                }");
-            classDefinition.AppendLine("                entity[logical.Name] = partyList;");
+                classDefinition.AppendLine("                }");
+                classDefinition.AppendLine("                entity[logical.Name] = partyList;");
             classDefinition.AppendLine("            }");
-            classDefinition.AppendLine("            else entity[logical.Name] = value;");
+            classDefinition.AppendLine("            else");
+            classDefinition.AppendLine("            {");
+            classDefinition.AppendLine("                var mapped = ConvertToDataverseValue(value, property.PropertyType, logical);");
+            classDefinition.AppendLine("                if (mapped != null) entity[logical.Name] = mapped;");
+            classDefinition.AppendLine("            }");
             classDefinition.AppendLine("        }");
             classDefinition.AppendLine("        return entity;");
+            classDefinition.AppendLine("    }");
+            classDefinition.AppendLine();
+        }
+
+        private static void AppendValueConversionMethods(StringBuilder classDefinition)
+        {
+            classDefinition.AppendLine("    private object ConvertToDataverseValue(object value, Type propertyType, LogicalNameAttribute logical)");
+            classDefinition.AppendLine("    {");
+            classDefinition.AppendLine("        if (value == null) return null;");
+            classDefinition.AppendLine("        if (value is Guid g && g == Guid.Empty) return null;");
+            classDefinition.AppendLine("        if (value is DateTime dt && dt == DateTime.MinValue) return null;");
+            classDefinition.AppendLine("        if (value.GetType().IsEnum) return new OptionSetValue((int)value);");
+            classDefinition.AppendLine("        if ((logical.AttributeType == \"state\" || logical.AttributeType == \"status\" || logical.AttributeType == \"picklist\") && value is int i)");
+            classDefinition.AppendLine("            return new OptionSetValue(i);");
+            classDefinition.AppendLine("        if (logical.AttributeType == \"money\" && value is decimal d)");
+            classDefinition.AppendLine("            return new Money(d);");
+            classDefinition.AppendLine("        return value;");
+            classDefinition.AppendLine("    }");
+            classDefinition.AppendLine();
+            classDefinition.AppendLine("    private object ConvertFromDataverseValue(object value, Type targetType)");
+            classDefinition.AppendLine("    {");
+            classDefinition.AppendLine("        if (value is AliasedValue alias) value = alias.Value;");
+            classDefinition.AppendLine("        if (value == null) return null;");
+            classDefinition.AppendLine("        var underlying = Nullable.GetUnderlyingType(targetType) ?? targetType;");
+            classDefinition.AppendLine("        if (value is OptionSetValue osv)");
+            classDefinition.AppendLine("        {");
+            classDefinition.AppendLine("            if (underlying.IsEnum) return Enum.ToObject(underlying, osv.Value);");
+            classDefinition.AppendLine("            if (underlying == typeof(int)) return osv.Value;");
+            classDefinition.AppendLine("        }");
+            classDefinition.AppendLine("        if (value is Money money && underlying == typeof(decimal)) return money.Value;");
+            classDefinition.AppendLine("        if (value is EntityReference er)");
+            classDefinition.AppendLine("        {");
+            classDefinition.AppendLine("            if (underlying == typeof(Guid)) return er.Id;");
+            classDefinition.AppendLine("            if (underlying == typeof(string)) return er.Name;");
+            classDefinition.AppendLine("        }");
+            classDefinition.AppendLine("        if (underlying.IsEnum && value is int intValue) return Enum.ToObject(underlying, intValue);");
+            classDefinition.AppendLine("        return value;");
             classDefinition.AppendLine("    }");
             classDefinition.AppendLine();
         }
@@ -518,7 +600,9 @@ namespace DataverseWrapper
             classDefinition.AppendLine("            if (logical == null) continue;");
             classDefinition.AppendLine("            if (!entity.Attributes.ContainsKey(logical.Name)) continue;");
             classDefinition.AppendLine("            var attributeValue = entity[logical.Name];");
-            classDefinition.AppendLine("            property.SetValue(this, attributeValue);");
+            classDefinition.AppendLine("            var convertedValue = ConvertFromDataverseValue(attributeValue, property.PropertyType);");
+            classDefinition.AppendLine("            if (convertedValue == null && property.PropertyType.IsValueType && Nullable.GetUnderlyingType(property.PropertyType) == null) continue;");
+            classDefinition.AppendLine("            property.SetValue(this, convertedValue);");
             classDefinition.AppendLine("        }");
             classDefinition.AppendLine($"        this.{primaryKeyColumn} = id;");
             classDefinition.AppendLine("    }");
@@ -561,14 +645,13 @@ namespace DataverseWrapper
             switch (type)
             {
                 case "multiselectpicklist":
-                case "customer":
                     return "object";
                 case "partylist":
                     return "Party[]";
                 case "status":
-                    return "StatusReason?";
+                    return "int?";
                 case "state":
-                    return "Status?";
+                    return "StateCode";
                 case "money":
                 case "decimal":
                     return "decimal";
@@ -580,7 +663,8 @@ namespace DataverseWrapper
                     return "primarykey";
                 case "owner":
                 case "lookup":
-                    return "Guid";
+                case "customer":
+                    return "EntityReference";
                 case "datetime":
                     return "DateTime";
                 case "bit":
@@ -615,6 +699,7 @@ namespace DataverseWrapper
             WriteHr();
             Console.WriteLine("Usage:");
             Console.WriteLine("  DataverseWrapper -z <path_to_solution_zip> [options]");
+            Console.WriteLine("  DataverseWrapper  (no args starts interactive mode)");
             Console.WriteLine();
             Console.WriteLine("Options:");
             Console.WriteLine("  -z, --zip <path>         Path to Dataverse solution zip containing customizations.xml (required)");
@@ -707,6 +792,74 @@ namespace DataverseWrapper
                 }
             }
             return null;
+        }
+
+        private static (string zipPath, string outDir, bool verbose, bool overwrite, string filterContains) RunInteractiveSetup()
+        {
+            string zipPath;
+            while (true)
+            {
+                Console.Write("Path to Dataverse solution zip: ");
+                zipPath = (Console.ReadLine() ?? string.Empty).Trim('"', ' ', '\t');
+                if (File.Exists(zipPath)) break;
+                LogWarn($"Zip not found: {zipPath}");
+            }
+
+            string defaultOutDir = Path.Combine(Environment.CurrentDirectory, $"GeneratedClasses_{DateTime.Now:yyyyMMdd_HHmmss}");
+            Console.Write($"Output directory [{defaultOutDir}]: ");
+            string outDirInput = Console.ReadLine();
+            string outDir = string.IsNullOrWhiteSpace(outDirInput) ? defaultOutDir : outDirInput.Trim('"', ' ', '\t');
+
+            Console.Write("Entity name filter (leave blank for all): ");
+            string filter = Console.ReadLine();
+
+            bool verbose = PromptYesNo("Enable verbose logging?", defaultValue: false);
+            bool overwrite = PromptYesNo("Overwrite existing files without prompt?", defaultValue: false);
+
+            WriteHr();
+            Console.WriteLine("Configuration:");
+            Console.WriteLine($"Zip:        {zipPath}");
+            Console.WriteLine($"Output:     {outDir}");
+            Console.WriteLine($"Filter:     {(string.IsNullOrWhiteSpace(filter) ? "(none)" : filter)}");
+            Console.WriteLine($"Verbose:    {verbose}");
+            Console.WriteLine($"Overwrite:  {overwrite}");
+            WriteHr();
+
+            bool proceed = PromptYesNo("Start generation now?", defaultValue: true);
+            if (!proceed)
+            {
+                LogWarn("Canceled by user.");
+                Environment.Exit(130);
+            }
+
+            return (zipPath, outDir, verbose, overwrite, string.IsNullOrWhiteSpace(filter) ? null : filter);
+        }
+
+        private static bool PromptYesNo(string prompt, bool defaultValue)
+        {
+            while (true)
+            {
+                string suffix = defaultValue ? "[Y/n]" : "[y/N]";
+                Console.Write($"{prompt} {suffix}: ");
+                string input = (Console.ReadLine() ?? string.Empty).Trim();
+                if (string.IsNullOrEmpty(input)) return defaultValue;
+                if (input.Equals("y", StringComparison.OrdinalIgnoreCase) || input.Equals("yes", StringComparison.OrdinalIgnoreCase)) return true;
+                if (input.Equals("n", StringComparison.OrdinalIgnoreCase) || input.Equals("no", StringComparison.OrdinalIgnoreCase)) return false;
+                LogWarn("Please enter y or n.");
+            }
+        }
+
+        private static string MakeUniqueIdentifier(string candidate, HashSet<string> used)
+        {
+            string baseName = SanitizeString(candidate);
+            string unique = baseName;
+            int suffix = 2;
+            while (!used.Add(unique))
+            {
+                unique = $"{baseName}_{suffix}";
+                suffix++;
+            }
+            return unique;
         }
     }
 
