@@ -2,14 +2,22 @@
 
 Generate strongly typed C# wrappers and option set enums from a Dataverse solution zip (`customizations.xml`).
 
-## Download
+## Quick Download
 
-Download the latest prebuilt Windows executable from GitHub Releases:
+<p align="center">
+  <a href="https://github.com/EricLott/DataversePluginWrapper/releases/latest/download/DataversePluginWrapper-win-x64.zip">
+    <img alt="Download for Windows x64" src="https://img.shields.io/badge/Download-Windows%20x64-2ea44f?style=for-the-badge" />
+  </a>
+</p>
 
-- Latest release page: `https://github.com/EricLott/DataversePluginWrapper/releases/latest`
-- Direct download (win-x64 zip): `https://github.com/EricLott/DataversePluginWrapper/releases/latest/download/DataversePluginWrapper-win-x64.zip`
+**Want to run it now?**
 
-Unzip and run `DataversePluginWrapper.exe`.
+1. Download: `DataversePluginWrapper-win-x64.zip`
+2. Unzip the file
+3. Run: `DataversePluginWrapper.exe`
+
+Release page: `https://github.com/EricLott/DataversePluginWrapper/releases/latest`
+
 
 This tool reads Dataverse metadata and writes:
 - `OptionSets/OptionValueSets.cs` with global option set enums and state enums
