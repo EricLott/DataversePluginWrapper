@@ -15,7 +15,7 @@ A C# console application that generates strongly typed entity classes and option
 ### 1. Clone and build
 
 ```sh
-git clone https://github.com/yourusername/DataversePluginWrapper.git
+git clone https://github.com/EricLott/DataversePluginWrapper.git
 cd DataversePluginWrapper
 dotnet build
 ```
