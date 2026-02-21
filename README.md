@@ -1,28 +1,22 @@
 # Dataverse Wrapper Generator
 
-A C# console application that generates strongly-typed entity classes and option set enums from a Dataverse solution zip (`customizations.xml`).
-This tool helps developers working with Microsoft Dataverse (Dynamics 365) by creating easy-to-use wrapper classes instead of manually handling attributes and option sets.
+A C# console application that generates strongly typed entity classes and option set enums from a Dataverse solution zip (`customizations.xml`).
 
-## ✨ Features
+## Features
 
-* Parses `customizations.xml` inside a Dataverse solution zip.
-* Generates:
+- Parses `customizations.xml` from a Dataverse solution zip.
+- Generates option set enums in `OptionSets/OptionValueSets.cs`.
+- Generates entity wrapper classes with `Create`, `Retrieve`, `Update`, and `Delete` methods.
+- Supports overwrite prompts (or `--yes` to skip prompts).
+- Supports entity filtering with `--filter`.
 
-  * **Option Sets** → strongly-typed enums in `OptionValueSets.cs`.
-  * **State & StatusReason enums** (e.g., `ActiveStatusReason`, `InactiveStatusReason`).
-  * **Entity classes** with CRUD wrappers (`Create`, `Retrieve`, `Update`, `Delete`).
-* Smart sanitization for C# identifiers.
-* Interactive overwrite prompts (with `--yes` to skip).
-* Colored console output for better visibility.
-* Entity filtering via `--filter`.
+## Getting Started
 
-## ⚡ Getting Started
-
-### 1. Clone & Build
+### 1. Clone and build
 
 ```sh
-git clone https://github.com/yourusername/DataverseWrapperGenerator.git
-cd DataverseWrapperGenerator
+git clone https://github.com/yourusername/DataversePluginWrapper.git
+cd DataversePluginWrapper
 dotnet build
 ```
 
@@ -32,9 +26,9 @@ dotnet build
 dotnet run -- -z path/to/your/solution.zip -o ./Generated
 ```
 
-## 📖 Usage
+## Usage
 
-```
+```text
 DataverseWrapper -z <path_to_solution_zip> [options]
 
 Options:
@@ -46,74 +40,34 @@ Options:
   -h, --help               Show help
 ```
 
-### Example: Generate all
+### Examples
+
+Generate all:
 
 ```sh
 dotnet run -- -z ./MySolution.zip
 ```
 
-### Example: Only generate for entities containing "Contact"
+Generate entities containing "Contact":
 
 ```sh
 dotnet run -- -z ./MySolution.zip -f Contact
 ```
 
-### Example: Overwrite without prompts
+Overwrite without prompts:
 
 ```sh
 dotnet run -- -z ./MySolution.zip -o ./OutDir -y
 ```
 
-## 📂 Output Structure
+## Output Structure
 
-```
+```text
 GeneratedClasses_20250919/
- ├── OptionSets/
- │   └── OptionValueSets.cs
- └── Entities/
-     ├── Account.cs
-     ├── Contact.cs
-     └── ...
-```
-
-## ✅ Example Generated Code
-
-### Option Set Enum
-
-```csharp
-public static class OptionValueSets
-{
-    public enum ContactType
-    {
-        Customer = 1,
-        Vendor = 2,
-        Partner = 3,
-    }
-}
-```
-
-### Entity Wrapper
-
-```csharp
-public class ContactItem
-{
-    private IOrganizationService _service;
-    private string EntityLogicalName = "contact";
-
-    [LogicalName("firstname")]
-    public string FirstName { get; set; }
-
-    [LogicalName("lastname")]
-    public string LastName { get; set; }
-
-    public ContactItem(IOrganizationService service)
-    {
-        _service = service;
-    }
-
-    public void Create() { ... }
-    public void Retrieve(Guid id) { ... }
-    public void Update() { ... }
-    public void Delete() { ... }
-}
+|-- OptionSets/
+|   `-- OptionValueSets.cs
+`-- Entities/
+    |-- Account.cs
+    |-- Contact.cs
+    `-- ...
 ```
